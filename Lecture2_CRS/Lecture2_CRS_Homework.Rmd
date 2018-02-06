@@ -1,0 +1,159 @@
+---
+title: "Lecture 2: CRS - Homework"
+author: Tyler Hoecker
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+```
+
+## Setup 
+Load general packages, set filepath for data files.
+```{r}
+library (tidyverse)
+library(rgdal)
+data_path = "/Users/tylerhoecker/GitHub/Zoo955_fork/Data/"
+```
+
+
+## 1) Download the LTER lake shapefiles from the LTER database. Map Lake Mendota. Add a point for the location of the CFL.
+
+### Using ```library(sp)``` and ```library(raster)```
+Load packages for this section.
+```{r}
+library(sp)
+library(raster)
+```
+
+Download North Temperatre Lakes LTER study lakes spatial data from a URL and save it to 'Data' directory.
+```{r eval = FALSE}
+download_link <- 'https://lter.limnology.wisc.edu/file/11669/download?token=tWhRExjmwpMK9caKoMd2VcgKmFln3dKHVTC0mwUBvqg'
+temp <- tempfile()
+download.file(download_link,temp)
+unzip(temp, exdir = paste0(data_path,'NTL_LTER_Yahara_Lakes'))
+unlink(temp)
+```
+
+Load shapefile.
+```{r}
+yahara_lakes <- readOGR(dsn = paste0(data_path,'NTL_LTER_Yahara_Lakes'), layer = "yld_study_lakes")
+```
+
+Extract just Lake Mendota and transform CRS to WGS84.
+```{r}
+lake_mendota <- 
+  yahara_lakes[yahara_lakes$SHAIDNAME == 'Lake Mendota',] %>% 
+  spTransform(., CRS("+init=epsg:4326 +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+```
+
+Create a point for the CFL (looked up using Google Maps), and define its CRS to be the same as ```lake_mendota```
+```{r}
+cfl_pt <- 
+  data.frame(x = -89.402923, y = 43.077269) %>% 
+  SpatialPoints() %>% 
+  `crs<-` (crs(lake_mendota))
+```
+
+Plot the lake shapefile and the CFL point
+``` {r}
+plot(gridlines(lake_mendota), lty=2)
+plot(lake_mendota, col = 'lightblue2', add=TRUE)
+plot(cfl_pt, pch = 20, col = 'red', cex = 2, add = TRUE)
+```
+
+### Or, do the same thing using ```library(sf)```
+I like the sf package because it plays nicely with the tidyverse, and treats spatial objects more like regular dataframes.
+
+Load packages for this section.
+```{r}
+library(sf)
+```
+
+Read in ```yld_study_lakes.shp```, transform CRS to WGS84, and filter out only Lake Mendota.
+```{r}
+lake_mendota_sf <- 
+  st_read(dsn = paste0(data_path,'NTL_LTER_Yahara_Lakes/yld_study_lakes.shp')) %>% 
+  st_transform(crs = c("+init=epsg:4326 +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")) %>%
+  filter(SHAIDNAME == 'Lake Mendota')
+```
+
+Make a new sf object for the CFL. 
+```{r}
+cfl_sf <- data.frame(x = -89.402923, y = 43.077269) %>% 
+  st_as_sf(coords = c("x", "y"), crs = st_crs(lake_mendota_sf))
+```
+
+Plot them both. 
+```{r}
+ggplot() +
+  geom_sf(data = lake_mendota_sf, fill = 'lightblue2') +
+  geom_sf(data = cfl_sf, colour = "red", size = 4) +
+  labs(x = 'Longitude', y = 'Latitude') +
+  theme_bw()
+```
+
+Or, plot Lake Mendota, and use ```annotate``` to add the CFL "by hand".
+```{r}
+ggplot() +
+  geom_sf(data = lake_mendota_sf, fill = 'lightblue2') +
+  annotate("point", x = -89.402923, y = 43.077269, colour = "red", size = 4) +
+  labs(x = 'Longitude', y = 'Latitude') +
+  theme_bw()
+```
+
+
+
+
+## 2) Download the National Land Cover (NLCD) dataset for 2011. Load it into R. What is the CRS?
+
+Download NLCD dataset from URL.
+```{r eval = FALSE}
+download_link <- 'http://www.landfire.gov/bulk/downloadfile.php?TYPE=nlcd2001v2&FNAME=nlcd_2001_landcover_2011_edition_2014_10_10.zip'
+
+temp <- tempfile()
+#download.file(download_link,temp)
+unzip(temp, exdir = 'Data/')
+unlink(temp)
+```
+
+Load NLCD dataset, and view CRS.
+```{r message = TRUE}
+nlcd <- raster(paste0(data_path,'NLCD/nlcd_2001_landcover_2011_edition_2014_10_10.img'))
+
+crs(nlcd)
+```
+# 3) What’s the best way to check that CRS of two objects are identical?
+
+The simplest way I can think of is to compare the proj4strings as character strings. If they are completely identical, the boolean comparison will be true: ```as.character( crs(object1) ) == as.character( crs(object2) )```.
+
+Here are some functions that could be handy:  
+
+For sf objects:
+```{r message = TRUE}
+crsTest <- function(object1, object2){
+  if(as.character(crs(object1)) == as.character(crs(object2))){
+    print("You're in luck, the CRS's are identical!")
+} else { 
+    print("CRS's not equal, try again.")}
+}
+
+crsTest(lake_mendota,nlcd)
+```
+
+For sf objects:
+```{r message = TRUE}
+st_crsTest <- function(object1, object2){
+  if(as.character(st_crs(object1)[2]) == as.character(st_crs(object2)[2])){
+    print("You're in luck, the CRS's are identical!")
+} else { 
+    print("CRS's not equal, try again.")}
+}
+
+st_crsTest(lake_mendota_sf,cfl_sf)
+```
+
+### Turns out there's already a function for this in sp... but it's messages are pretty boring :)
+```{r message = TRUE}
+identicalCRS(lake_mendota,nlcd)
+```
