@@ -1,0 +1,203 @@
+---
+title: "Zoo955 - Raster Data"
+author: "Hilary Dugan"
+date: "February 20, 2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## What is a Raster? (from raster package)
+A raster is a spatial (geographic) data structure that divides a region into rectangles called 'cells' (or
+'pixels') 
+
+* Each cell has 1 or more data values
+
+Such a data structure is also referred to as a 'grid' and is often contrasted with 'vector' data that is used to represent points, lines, and polygons.
+
+#### Raster advantages & disadvantages over vector data
+
+* Raster data usually requires more storage space than vector data 
+* Raster data can be more difficult to re-project and scale
+* Raster data can be more difficult to update 
+
+* Raster data can be computationally less expensive to render graphically
+* Easy to plot 
+
+## Types of Raster Data
+
+* Climate data
+* Land cover data
+* Elevation data
+
+Many of these are satellite derived, and the resolution depends on the satellite resolution
+
+## How is raster data stored? 
+There are many ways raster data is stored. Each file type is specialized for its use. 
+
+-------------------------------------------------------------
+Type              Used for/by                       Format 
+----------------- ---------------------- ----------------- 
+ARC Digitized     National Geospatial    .img or .ovr
+Raster Graphics   Intelligence Agency
+(ADRG)                 
+
+JPEG2000          Compression technique  .jp2, .j2c, .j2k, or .jpx
+                  for large imagery
+
+GeoTiff           Georeferencing within  .tif, .tiff, or .tff
+                  a TIFF file
+
+NetCDF            climatology            .nc
+Network Common    meteorology
+Data Form         oceanography
+-------------------------------------------------------------
+
+Table: Some common raster file types
+  
+You don't need to know the file type details, but you will become familiar with with formats can be read into R
+
+## Spatial resolution 
+Each pixel has the same dimensions and shape. 
+
+In the case of rasters representing Earth's surface, the size of the area on the surface that each pixel covers is known as the __spatial resolution__
+
+The resolution is tyipcally in meters, but can check the CRS
+`res(x)` Gives resolution
+
+## Using raster data in R
+The R Raster package: https://cran.r-project.org/web/packages/raster/vignettes/Raster.pdf
+
+"A notable feature of the raster package is that it can work with raster
+datasets that are stored on disk and are too large to be loaded into memory
+(RAM). The package can work with large files because the objects it creates
+from these files only contain information about the structure of the data, such
+as the number of rows and columns, the spatial extent, and the filename, but it
+does not attempt to read all the cell values in memory. In computations with
+these objects, data is processed in chunks."
+
+
+## Data structures 
+#### Raster Layer
+A RasterLayer object represents single-layer (variable) raster data
+
+#### Raster Stack vs. Brick
+
+* There are two classes for multi-layer data the __RasterStack__ and the __RasterBrick__ 
+* __RasterStack__ can be formed from separate files and/or from a few layers ('bands') 
+    * RasterStack is a collection of RasterLayer objects with the same
+spatial extent and resolution
+    * Basically a list of RasterLayer objects
+* __RasterBrick__ can only be linked to a single (multi-layer) file
+    * A multilayered object, but can only refer to a single file 
+    * More effecient processing 
+
+## Import data
+The raster package makes life easy for importing raster data. I have provided two different storage formats for Lake Mendota NLCD data. 
+
+1) .grd = native grid format for raster package
+2) .tif = geoTIFF
+
+```{r nlcd, message=FALSE, warning=FALSE}
+library(raster,verbose = F)
+nlcd = raster('Data/MendotaNLCD.tif')
+nlcd = raster('Data/MendotaNLCD.grd')
+nlcd
+```
+
+What is the resolution and extent? 
+```{r, message=FALSE, warning=FALSE}
+res(nlcd)
+extent(nlcd)
+```
+
+Can explore the data values
+```{r, message=FALSE, warning=FALSE}
+hist(nlcd)
+```
+
+Can plot the data
+```{r, message=FALSE, warning=FALSE,fig.width=3}
+plot(nlcd)
+image(nlcd)
+```
+
+
+Look at the file structure
+```{r, message=FALSE, warning=FALSE}
+str(nlcd)
+```
+
+Notice there are no data store in the `@data`
+```{r, message=FALSE, warning=FALSE}
+nlcd@data@values
+
+inMemory(nlcd)
+```
+
+Can use the `getValues` function. Reads off of disk or memory. 
+`getValues(nlcd)`
+
+Notice that there are attributes and a legend
+```{r, message=FALSE, warning=FALSE}
+atts = nlcd@data@attributes[[1]]
+head(atts,20)
+nlcd@legend
+```
+
+#### Alter colors 
+All of the NA data is stored as zeros. In the color legend this is black (#000000). Could change to white. 
+```{r, message=FALSE, warning=FALSE,fig.width=3}
+nlcd@legend@colortable[1] = '#ffffff'
+plot(nlcd)
+```
+
+Could just plot agriculture 
+```{r, message=FALSE, warning=FALSE,fig.width=3}
+ag.nlcd = nlcd
+ag.nlcd@legend@colortable = '#ffffff'
+ag.nlcd@legend@colortable[81] = '#228B22'
+ag.nlcd@legend@colortable[82] = '#228B22'
+plot(ag.nlcd)
+```
+
+## Data Counts
+```{r, message=FALSE, warning=FALSE}
+library(dplyr)
+nlcdVals = freq(nlcd)
+# Sum values, minus zero values 
+total = as.data.frame(nlcdVals) %>% dplyr::filter(value >= 1) %>%
+  summarise_at('count',sum)
+
+# Total impervious counts
+impervious = as.data.frame(nlcdVals) %>% dplyr::filter(value >= 21 & value <= 24) %>%
+  summarise_at('count',sum)
+
+# Total ag counts
+ag = as.data.frame(nlcdVals) %>% dplyr::filter(value >= 81 & value <= 82) %>%
+  summarise_at('count',sum)
+
+perImp = impervious/total
+perImp
+perAg = ag/total
+perAg
+```
+
+## Aggregate data 
+Can aggregate the data to a lower resolution
+```{r, message=FALSE, warning=FALSE,fig.width=3,fig.show='hold'}
+#aggregate from 30x30 to 300*300 (factor of 10)
+nlcd10 <- aggregate(nlcd, fact=10, fun = mean)
+res(nlcd10)
+par(mfrow=c(1,2),mar=c(2,2,1,1))
+image(nlcd)
+image(nlcd10)
+```
+
+## Homework
+
+1) What is the percent of forest in the Mendota catchment? 
+2) What is the area of forest in the Mendota catchment (report in km2)? 
