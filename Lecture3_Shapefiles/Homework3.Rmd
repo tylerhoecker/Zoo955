@@ -1,0 +1,105 @@
+---
+title: 'Homework 3: Shapefiles'
+author: Tyler Hoecker
+output: html_document
+---
+## Setup 
+```{r}
+library(sf)
+library(tidyverse)
+```
+
+
+## Define two functions
+
+### `st_covers`
+
+From POST-GIS documentation:
+"ST_Covers — Returns 1 (TRUE) if no point in Geometry B is outside Geometry A".
+
+Use: `st_covers(x, y, sparse = TRUE, prepared = TRUE)`
+
+This function tests if the geometry of object x covers the geometry of object y. If no points in object y are beyond the boundaries of object x, then object x completely covers object y.  
+
+
+### `st_covered_by`  
+
+From POST-GIS documentation:
+"ST_CoveredBy — Returns 1 (TRUE) if no point in Geometry A is outside Geometry B"
+
+Use: `st_covered_by(x, y, sparse = TRUE, prepared = TRUE)`
+
+This is essentially the inverse of `st_covers`. `st_covered_by` tests if the geometry of object x is covered by the geomertry of object y. If no points in object x are beyond the boundaries of object y, then object x is completely covered by y (and y completely covers x). `st_covers(x,y)` will produce the same result as `st_covered_by(y,x)`. 
+
+Found this in sf documentation: all functions and methods in sf that operate on spatial data are prefixed by st_, which refers to spatial and temporal
+
+## Make a 500 m buffer of the 4 southern LTER lakes. 
+```{r}
+yahara_lakes_sf <- 
+  st_read(dsn = "/Users/tylerhoecker/GitHub/Zoo955_fork/Data/NTL_LTER_Yahara_Lakes/yld_study_lakes.shp") 
+
+yahara_buffers <- yahara_lakes_sf %>% 
+  st_buffer(dist = 500)
+```
+
+Add labels at the center of each polygon so that the `st_intersects` results make sense
+```{r}
+yahara_lakes_coords <- yahara_lakes_sf %>%
+  st_centroid() %>%         # find polygon centroids (sf points object)
+  st_coordinates()          # extract the coordinates of these points as a matrix
+
+# Insert centroid long and lat fields as attributes of polygons
+yahara_lakes_sf$label_long <- yahara_lakes_coords[,1]
+yahara_lakes_sf$label_lat <- yahara_lakes_coords[,2]
+# Also make an explicit column for their ID, since I can't figure out how to reference that...
+yahara_lakes_sf$label <- c("1","2","3","4")
+```
+
+Plot lakes and buffers
+```{r}
+ggplot() +
+  geom_sf(data = yahara_buffers, fill = 'grey40', alpha = 0.4) +
+  geom_sf(data = yahara_lakes_sf, fill = 'lightblue2') +
+  geom_text(data = yahara_lakes_sf, aes(label_long, label_lat, label= label)) +  
+  labs(x = 'Longitude', y = 'Latitude') +
+  theme_bw(base_size = 14)
+```
+
+## Which ones overlap?
+```{r}
+st_overlaps(yahara_buffers, yahara_buffers)
+```
+Lake 2 (Mendota) overlaps with lake 3 (Monona). Monona overlaps with Mendota and Winga. Winga overlaps with Monona. 
+
+## Double the size of the lakes... how much overlaps?
+I worked for several hours trying to solve this but was unsuccessful... My basic logic was to calculate the distrance from the edge of the polygons to their centroid, double that distance, and recalculate the geometry. Below is some code that doesn't work but demonstrate my attempt:
+```{r eval=F}
+yahara_centroids <- yahara_lakes_sf %>%
+  st_centroid()
+  `st_geometry<-` 
+   
+ggplot() +
+  geom_sf(data = yahara_buffers, fill = 'grey40', alpha = 0.4) +
+  geom_sf(data = yahara_lakes_sf, fill = 'lightblue2') +
+  geom_sf(data = yahara_centroids) +
+  #geom_text(data = yahara_lakes_sf, aes(label_long, label_lat, label= label)) +  
+  labs(x = 'Longitude', y = 'Latitude') +
+  theme_bw(base_size = 14)
+
+yahara_lakes_sf$geometry[[1]] - yahara_centroids$geometry[[1]]
+
+cent_coords <- yahara_centroids[1,] %>% 
+  group_by(LAKE_NAME) %>%
+  st_coordinates()
+
+edge_coords <- yahara_lakes_sf[1,] %>% 
+  group_by(LAKE_NAME) %>%
+  st_coordinates() %>% 
+  mutate(X_dist = X - cent_coords[,'X'])
+
+edge_coords[,'X_dist'] <- 
+
+dist=sqrt(( coords$X - center[1] )^2 +( coords$Y-center[2])^2)
+```
+
+
