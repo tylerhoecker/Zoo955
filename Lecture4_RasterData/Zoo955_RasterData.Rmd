@@ -145,6 +145,7 @@ Notice that there are attributes and a legend
 ```{r, message=FALSE, warning=FALSE}
 atts = nlcd@data@attributes[[1]]
 head(atts,20)
+landCovers <- filter(atts, COUNT != 0)
 nlcd@legend
 ```
 
@@ -200,4 +201,4 @@ image(nlcd10)
 ## Homework
 
 1) What is the percent of forest in the Mendota catchment? 
-2) What is the area of forest in the Mendota catchment (report in km2)? 
+2) What is the area of forest in the Mendota catchment (report in km^2)? 
